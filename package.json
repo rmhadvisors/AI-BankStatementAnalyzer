@@ -1,0 +1,16 @@
+{
+  "name": "ai-bank-statement-analyzer-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --workspace frontend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "build": "npm run build --workspace frontend",
+    "typecheck": "npm run typecheck --workspace backend && npm exec --workspace frontend tsc -- --noEmit",
+    "lint": "npm run lint --workspace frontend"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ]
+}
