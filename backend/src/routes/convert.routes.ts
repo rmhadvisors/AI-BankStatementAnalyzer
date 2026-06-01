@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Router } from "express";
 import multer from "multer";
+import { buildStatementExcelFilename } from "../utils/exportFilename";
 
 const { convertPdfToExcelBuffer } = require("../converter/converter");
 
@@ -38,8 +39,9 @@ convertRouter.post("/convert", statementUpload, async (request, response) => {
 
   try {
     const result = await convertPdfToExcelBuffer(file.path, { password });
-    const originalName = path.parse(file.originalname).name || "statement";
-    const outputName = `${originalName}.xlsx`;
+    const outputName = buildStatementExcelFilename(
+      { accountInfo: result.statement.accountInfo, fileName: file.originalname },
+    );
 
     response.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     response.setHeader("Content-Disposition", `attachment; filename="${outputName.replace(/"/g, "")}"`);

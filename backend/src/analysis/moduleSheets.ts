@@ -51,6 +51,13 @@ function bankNavRow(banks: ModuleSheetInput["applicantBanks"]): RawSheet[0] {
   ];
 }
 
+export function buildAccountSubtitle(input: ModuleSheetInput): string {
+  const bank = input.applicantBanks[0];
+  if (!bank) return "Consolidated";
+  const ifsc = bank.ifsc && bank.ifsc !== "-" ? ` (${bank.ifsc})` : "";
+  return `Account Number: ${bank.account}, ${bank.name}${ifsc}`;
+}
+
 function accountNavRows(accountName: string, navLabel = "Consolidated"): RawSheet {
   return [
     [accountName, null, null, null, "Index"],
@@ -58,12 +65,16 @@ function accountNavRows(accountName: string, navLabel = "Consolidated"): RawShee
   ];
 }
 
+function accountNavRowsForInput(input: ModuleSheetInput): RawSheet {
+  return accountNavRows(input.accountName, buildAccountSubtitle(input));
+}
+
 function bankAccountNavRows(input: ModuleSheetInput): RawSheet {
   const rows = bankNavRow(input.applicantBanks);
   return [
     rows,
     [input.accountName, null, null, null, "Index"],
-    ["Consolidated", null, null, null, "Go to top"],
+    [buildAccountSubtitle(input), null, null, null, "Go to top"],
   ];
 }
 
@@ -232,8 +243,29 @@ const SPEND_BUCKETS = [
 
 const BILL_BUCKETS = ["Telephone", "Electricity", "Fuel", "Gas", "Rent", "Other"] as const;
 
+export function buildRawDataSheet(input: ModuleSheetInput): RawSheet {
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
+  sheet.push(["Raw Data", "Raw Data", "Raw Data"]);
+  sheet.push(["SN", "DATE", "Description", "Debit", "Credit", "Balance", "Category", "Mode Of Transaction"]);
+
+  input.transactions.forEach((txn, index) => {
+    sheet.push([
+      index + 1,
+      displayDate(txn.dateText),
+      txn.narration,
+      txn.debit > 0 ? round(txn.debit) : null,
+      txn.credit > 0 ? round(txn.credit) : null,
+      typeof txn.balance === "number" ? round(txn.balance) : null,
+      txn.category,
+      txn.mode,
+    ]);
+  });
+
+  return sheet;
+}
+
 export function buildEmiTrackerSheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   const emiTxns = input.transactions.filter(
     (txn) => txn.debit > 0 && txn.category === "Loan & EMI",
   );
@@ -479,7 +511,7 @@ export function buildCircularSheet(input: ModuleSheetInput): RawSheet {
 }
 
 export function buildNetTransactionsSheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
 
   const debitAmounts = getMonthValues(input.months, input.monthKeys, input.momContextByKey, (_ctx, month) => month.totalDebits);
   const creditAmounts = getMonthValues(input.months, input.monthKeys, input.momContextByKey, (_ctx, month) => month.totalCredits);
@@ -514,7 +546,7 @@ export function buildNetTransactionsSheet(input: ModuleSheetInput): RawSheet {
 }
 
 export function buildSalarySheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   const salaryTxns = input.transactions.filter((txn) => txn.category === "Salary");
 
   sheet.push(["Summary of Salary"]);
@@ -549,7 +581,7 @@ export function buildSalarySheet(input: ModuleSheetInput): RawSheet {
 }
 
 export function buildStaffEmolumentsSheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   const salaryDebitTxns = input.transactions.filter(
     (txn) => txn.debit > 0 && (/SALARY|PAYROLL|WAGES/i.test(txn.narration) || txn.category === "Salary"),
   );
@@ -601,7 +633,7 @@ export function buildStaffEmolumentsSheet(input: ModuleSheetInput): RawSheet {
 }
 
 export function buildSpendAnalysisSheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   const debitTxns = input.transactions.filter((txn) => txn.debit > 0);
 
   sheet.push(["Summary of Spend Analysis"]);
@@ -628,7 +660,7 @@ export function buildSpendAnalysisSheet(input: ModuleSheetInput): RawSheet {
 }
 
 export function buildBillPaymentsSheet(input: ModuleSheetInput): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   const utilityTxns = input.transactions.filter(
     (txn) => txn.debit > 0 && (txn.category === "Utilities" || txn.category === "Rent"),
   );
@@ -703,7 +735,7 @@ function buildRecurringSheet(
   patterns: RecurringPattern[],
   direction: "Debit" | "Credit",
 ): RawSheet {
-  const sheet: RawSheet = [...accountNavRows(input.accountName)];
+  const sheet: RawSheet = [...accountNavRowsForInput(input)];
   sheet.push(["DATE", "Description", "Payment Category", "Amount", "Mode Of Transaction", "Bank Name", "Account Number"]);
 
   patterns.forEach((pattern) => {
@@ -745,6 +777,7 @@ export function buildRecurringCreditSheet(input: ModuleSheetInput): RawSheet {
 
 export function buildAllModuleSheets(input: ModuleSheetInput) {
   return {
+    rawDataSheet: buildRawDataSheet(input),
     emiTrackerSheet: buildEmiTrackerSheet(input),
     tradeCreditsSheet: buildTradeCreditsSheet(input),
     tradeDebitsSheet: buildTradeDebitsSheet(input),

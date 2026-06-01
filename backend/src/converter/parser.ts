@@ -667,6 +667,9 @@ function extractAccountInfo(lines) {
       /Account\s*Holder\s*Name\s*:\s*([^\n]+)/i,
       /Customer\s*Name\s*:\s*([^\n]+)/i,
       /Name\s*of\s*Account\s*Holder\s*:\s*([^\n]+)/i,
+      /(?:^|\n)\s*(MR\.?\s+[A-Z][A-Z\s.]{4,60})\s*(?:\n|$)/im,
+      /(?:^|\n)\s*(MRS\.?\s+[A-Z][A-Z\s.]{4,60})\s*(?:\n|$)/im,
+      /(?:^|\n)\s*(MS\.?\s+[A-Z][A-Z\s.]{4,60})\s*(?:\n|$)/im,
       /\n(M\/S\.\s*[^\n]+)/i,
     ]],
     ["Account Number", [/A\/C\s*Number\s*:\s*([0-9]+)/i, /Account No\s*:\s*([0-9]+)/i]],
@@ -707,6 +710,18 @@ function extractAccountInfo(lines) {
     if (/^(date|time|page no|helpline no|branch phone no)$/i.test(label)) continue;
 
     info.push({ label, value });
+  }
+
+  for (let index = info.length - 1; index >= 0; index -= 1) {
+    const entry = info[index];
+    if (!/account name/i.test(entry.label)) continue;
+    const value = entry.value || "";
+    if (
+      /^address\b/i.test(value) ||
+      (/\b(HDFC|ICICI|AXIS|SBI)\s+BANK\b/i.test(value) && !/\b(MR|MRS|MS|M\/S)\b/i.test(value))
+    ) {
+      info.splice(index, 1);
+    }
   }
 
   const hasAccountName = info.some((entry) => /account name/i.test(entry.label));

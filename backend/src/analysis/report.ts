@@ -4,20 +4,13 @@ import { normalizeTransactions } from "./normalize";
 import { buildFlags, riskFromFlags } from "./risk";
 import { buildAllModuleSheets } from "./moduleSheets";
 import type { AnalysisInput, BounceEvent } from "./types";
-import { accountId, bankName, formatINR, getInfo, groupBy, round, totalBy } from "./utils";
+import { accountId, bankName, formatINR, getInfo, groupBy, resolveAccountHolderName, round, totalBy } from "./utils";
 
 export function analyzeBankStatements(input: AnalysisInput) {
   const transactions = normalizeTransactions(input.statements);
   const months = buildMonthMetrics(transactions);
   const primaryStatement = input.statements[0];
-  const extractedAccountName =
-    getInfo(primaryStatement, /account name/i) ||
-    getInfo(primaryStatement, /customer name/i) ||
-    getInfo(primaryStatement, /account holder/i);
-  const accountName =
-    (extractedAccountName && extractedAccountName.trim()) ||
-    (input.applicantName && input.applicantName.trim()) ||
-    "Applicant";
+  const accountName = resolveAccountHolderName(primaryStatement, input.applicantName);
   const accountNumber = primaryStatement ? accountId(primaryStatement, 0) : "-";
   const bank = primaryStatement ? bankName(primaryStatement) : "-";
   const totalCredits = totalBy(transactions, "credit");
@@ -125,6 +118,11 @@ export function analyzeBankStatements(input: AnalysisInput) {
 
   const bank1 = applicantBanks[0];
   const bank2 = applicantBanks[1];
+  const accountSubtitle = bank1
+    ? `Account Number: ${bank1.account}, ${bank1.name}${
+        bank1.ifsc && bank1.ifsc !== "-" ? ` (${bank1.ifsc})` : ""
+      }`
+    : "Consolidated";
   const bank1Summary = buildBankSummary(bank1?.account);
   const bank2Summary = buildBankSummary(bank2?.account);
 
@@ -561,7 +559,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
   ]);
 
   momSheet.push([accountName, null, null, null, "Index"]);
-  momSheet.push(["Consolidated", null, null, null, "Go to top"]);
+  momSheet.push([accountSubtitle, null, null, null, "Go to top"]);
 
   momSheet.push(["Month Wise Balance and Transaction Summary"]);
   momSheet.push(["Particulars", ...monthLabels]);
@@ -1287,7 +1285,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
         bank2 ? `${bank2.name}-${bank2.account}` : null,
       ]);
       monthlyCFSheet.push([accountName, null, null, null, "Index"]);
-      monthlyCFSheet.push(["Consolidated", null, null, null, "Go to top"]);
+      monthlyCFSheet.push([accountSubtitle, null, null, null, "Go to top"]);
     } else if (options.accountLabel) {
       monthlyCFSheet.push([accountName, null, null, null, "Index"]);
       monthlyCFSheet.push([options.accountLabel, null, null, null, "Go to top"]);
@@ -1758,7 +1756,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
 
   // Navigation rows
   loansSheet.push([accountName, null, null, null, "Index"]);
-  loansSheet.push(["Consolidated", null, null, null, "Go to top"]);
+  loansSheet.push([accountSubtitle, null, null, null, "Go to top"]);
 
   // Section 1: Loan Credit Instances
   loansSheet.push(["Loan Credit Instances"]);
@@ -1983,7 +1981,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
 
   // Top rows: entity + navigation style
   execSheet.push([accountName, null, null, null, "Index"]);
-  execSheet.push(["Consolidated", null, null, null, "Go to top"]);
+  execSheet.push([accountSubtitle, null, null, null, "Go to top"]);
   execSheet.push([]);
   execSheet.push(["Executive Summary"]);
 
@@ -2027,7 +2025,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
 
   const flagsSheet: Array<Array<string | number | null>> = [];
   flagsSheet.push([accountName, null, null, null, "Index"]);
-  flagsSheet.push(["Consolidated", null, null, null, "Go to top"]);
+  flagsSheet.push([accountSubtitle, null, null, null, "Go to top"]);
   flagsSheet.push([]);
   flagsSheet.push(["SN", "Flag Category", "Flag", "Flag Description", "Flag Colour"]);
   flags.forEach((flag) => {
@@ -2051,7 +2049,7 @@ export function analyzeBankStatements(input: AnalysisInput) {
   ]);
 
   camSheet.push([accountName, null, null, null, "Index"]);
-  camSheet.push(["Consolidated", null, null, null, "Go to top"]);
+  camSheet.push([accountSubtitle, null, null, null, "Go to top"]);
 
   camSheet.push([
     "Month-Year",

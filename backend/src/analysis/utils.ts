@@ -103,6 +103,61 @@ export function getInfo(statement: ExtractedStatement | undefined, label: RegExp
   return statement?.accountInfo?.find((entry) => label.test(entry.label))?.value || "";
 }
 
+export function extractNameFromFileName(fileName?: string): string | null {
+  if (!fileName) return null;
+  const base = fileName.replace(/\.pdf$/i, "").trim();
+  const titled =
+    base.match(/(?:^|_)(MR\.?\s+[A-Za-z][A-Za-z.\s]{2,80})$/i) ||
+    base.match(/(?:^|_)(MRS\.?\s+[A-Za-z][A-Za-z.\s]{2,80})$/i) ||
+    base.match(/(?:^|_)(MS\.?\s+[A-Za-z][A-Za-z.\s]{2,80})$/i) ||
+    base.match(/(?:^|_)(M\/S\.?\s+[A-Za-z0-9][A-Za-z0-9.\s&]{2,80})$/i);
+  if (titled?.[1]) return titled[1].replace(/\s+/g, " ").trim();
+  return null;
+}
+
+export function resolveAccountHolderName(
+  statement: ExtractedStatement | undefined,
+  applicantName?: string,
+): string {
+  const fromInfo =
+    getInfo(statement, /^account name$/i) ||
+    getInfo(statement, /customer name/i) ||
+    getInfo(statement, /account holder/i);
+  if (fromInfo) {
+    const trimmed = fromInfo.trim();
+    if (!/^address$/i.test(trimmed) && trimmed.length > 3) return trimmed;
+  }
+
+  const fromFile = extractNameFromFileName(statement?.fileName);
+  if (fromFile) return fromFile;
+
+  if (applicantName?.trim()) return applicantName.trim();
+  return "Applicant";
+}
+
+export function formatBankDisplayName(raw: string): string {
+  const text = raw.replace(/\s+/g, " ").trim();
+  if (!text) return "Bank";
+  const upper = text.toUpperCase();
+  if (upper.includes("HDFC")) return "HDFC Bank Ltd";
+  if (upper.includes("IDFC")) return "IDFC First Bank";
+  if (upper.includes("ICICI")) return "ICICI Bank";
+  if (upper.includes("AXIS") || upper.includes("UTIB")) return "Axis Bank";
+  if (upper.includes("SBI") || upper.includes("STATE BANK")) return "State Bank of India";
+  if (upper.includes("KOTAK") || upper.includes("KKBK")) return "Kotak Mahindra Bank";
+  if (upper.includes("BARODA") || upper.includes("BARB")) return "Bank of Baroda";
+  if (upper.includes("UNION")) return "Union Bank of India";
+  if (upper.includes("IDBI")) return "IDBI Bank";
+  return text;
+}
+
+export function accountNumberSuffix(accountNumber: string): string {
+  const digits = accountNumber.replace(/\D/g, "");
+  if (digits.length >= 4) return digits.slice(-4);
+  const cleaned = accountNumber.trim();
+  return cleaned.length > 0 ? cleaned.slice(-4) : "0000";
+}
+
 export function accountId(statement: ExtractedStatement, index: number): string {
   return getInfo(statement, /account number/i) || statement.fileName || `Account ${index + 1}`;
 }
@@ -113,25 +168,27 @@ export function bankName(statement: ExtractedStatement): string {
     getInfo(statement, /^bank$/i) ||
     getInfo(statement, /bank name/i);
   if (direct && !/^unknown/i.test(direct) && direct.length < 80) {
-    return direct.replace(/\s+/g, " ").trim();
+    const normalized = direct.replace(/\s+/g, " ").trim();
+    const firstSegment = normalized.split(",")[0]?.trim() || normalized;
+    return formatBankDisplayName(firstSegment);
   }
 
   const ifsc = getInfo(statement, /ifsc/i);
   const fromIfsc = inferBankFromIfsc(ifsc);
-  if (fromIfsc) return fromIfsc;
+  if (fromIfsc) return formatBankDisplayName(fromIfsc);
 
   const fromFile = inferBankFromFileName(statement.fileName);
-  if (fromFile) return fromFile;
+  if (fromFile) return formatBankDisplayName(fromFile);
 
   const branch = getInfo(statement, /branch/i);
-  if (/IDFC/i.test(branch)) return "IDFC FIRST BANK";
+  if (/IDFC/i.test(branch)) return formatBankDisplayName("IDFC FIRST BANK");
 
   const loose = getInfo(statement, /bank/i);
   if (loose && loose.length < 80 && !/tower|complex|mumbai|address|branch/i.test(loose)) {
-    return loose.replace(/\s+/g, " ").trim();
+    return formatBankDisplayName(loose);
   }
 
-  return fromFile || "Unknown Bank";
+  return fromFile ? formatBankDisplayName(fromFile) : "Unknown Bank";
 }
 
 export function totalBy(transactions: NormalizedTransaction[], field: "credit" | "debit" | "amount"): number {

@@ -27,9 +27,16 @@ import {
   Legend,
 } from "recharts";
 
+declare global {
+  interface Window {
+    __BSA_PDF_READY__?: boolean;
+  }
+}
+
 export const Route = createFileRoute("/print/master")({
   validateSearch: (search: Record<string, unknown>) => ({
     autoprint: search.autoprint === "1" || search.autoprint === 1 || search.autoprint === true,
+    pdf: search.pdf === "1" || search.pdf === 1 || search.pdf === true,
     filename: typeof search.filename === "string" ? search.filename : undefined,
     id: typeof search.id === "string" ? search.id : undefined,
   }),
@@ -107,13 +114,21 @@ function MasterPrintPage() {
   }, [id]);
 
   useEffect(() => {
+    window.__BSA_PDF_READY__ = ready;
     if (!ready) return;
     document.body.classList.add("browser-master-pdf-export");
     document.title = pdfTitle;
     document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((link) => {
-      link.href = new URL(link.getAttribute("href") || "", window.location.origin).href;
+      const href = link.getAttribute("href");
+      if (!href) return;
+      try {
+        link.href = new URL(href, window.location.origin).href;
+      } catch {
+        /* keep original */
+      }
     });
     return () => {
+      window.__BSA_PDF_READY__ = false;
       document.body.classList.remove("browser-master-pdf-export");
     };
   }, [pdfTitle, ready]);

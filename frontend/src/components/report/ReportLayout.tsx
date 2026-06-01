@@ -6,7 +6,6 @@ import { applicant, accountInfo, riskScore, aiRecommendation, flags, momSummary,
 import { downloadMasterExcel, downloadMasterPdf, getAnalysis } from "@/lib/api";
 import { useLatestReportVersion } from "@/lib/analysis-report-store";
 import { getLatestAnalysisId, getLatestReport, saveLatestReport } from "@/lib/analysis-report-store";
-import { buildMasterSummaryPdfTitle } from "@/lib/exportFilename";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
@@ -344,10 +343,9 @@ export function ReportLayout() {
       await downloadMasterPdf(analysisId, readExcelPeriodParams());
     } catch (error) {
       console.error("Failed to download PDF:", error);
-      const filename = buildMasterSummaryPdfTitle({ applicant, accountInfo });
-      const url = `${window.location.origin}/print/master?autoprint=1&filename=${encodeURIComponent(filename)}&id=${encodeURIComponent(analysisId)}`;
-      window.open(url, "_blank", "noopener,noreferrer");
-      alert("Automatic PDF download failed. Opened the print page as a fallback.");
+      alert(
+        "Failed to download the PDF. Ensure the backend is running and Chrome or Edge is installed (or set CHROME_PATH).",
+      );
     } finally {
       setDownloadingPdf(false);
     }

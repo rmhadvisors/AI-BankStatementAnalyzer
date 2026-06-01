@@ -18,7 +18,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "multer": "^2.1.1",
-    "pdfjs-dist": "^5.7.284"
+    "pdfjs-dist": "^5.7.284",
+    "puppeteer-core": "^24.2.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
