@@ -5,15 +5,47 @@ import {
   extractPartyLedgerFields,
   groupTransactionsByParty,
 } from '../analysis/transactionSummary';
+import {
+  applyConsistentSheetFormatting,
+  EXCEL_THEME,
+  INR_NUM_FMT,
+  styleIndexSheet,
+} from './excelSheetStyles';
 
 type RawSheetRows = Array<Array<string | number | null>>;
 
+const INDEX_SHEET_DESCRIPTIONS: Record<string, string> = {
+  Flags: "Flagging of critical events which affect credit decisioning",
+  "Exec Summary": "A concise and holistic Performance overview",
+  "CAM Analysis": "Monthwise overview of key data points",
+  "MoM Summary": "Month on month summary of all the metrics",
+  "Raw Data": "Raw data as extracted from bank statements",
+  "Monthly CF": "Monthwise details of the Net cash flows",
+  "Bounce & Penal": "Details of different types of Bank bounces and charges",
+  "Loans and EMI": "Details of instances of loans received and EMIs paid",
+  "EMI Tracker": "Monthwise Financial institution wise EMI tracker",
+  "Trade Credits": "Partywise details of Trade Credits received",
+  "Trade Debits": "Partywise details of Trade Debits paid",
+  "Highest Tns": "10 highest debit and credit transactions",
+  "Internal & Group": "Internal and related party transaction details",
+  Circular: "Circular flow of funds between parties",
+  "Net Transactions": "Net debit and credit amounts monthwise",
+  Salary: "Salary credits and related analysis",
+  "Staff Emoluments": "Salary debits and staff emoluments",
+  "Spend Analysis": "Category wise spend analysis",
+  "Bill Payments": "Utility and bill payment analysis",
+  "Recurring Debit": "Recurring debit patterns",
+  "Recurring Credit": "Recurring credit patterns",
+  "Transaction Summary": "Party-wise transaction summary",
+};
+
 export class ExcelGeneratorService {
   private readonly masterModules = [
-    { key: "executive-summary", title: "Exec Summary" },
     { key: "flags-risk", title: "Flags" },
+    { key: "executive-summary", title: "Exec Summary" },
     { key: "cam-analysis", title: "CAM Analysis" },
     { key: "mom-summary", title: "MoM Summary" },
+    { key: "raw-data", title: "Raw Data" },
     { key: "monthly-cash-flow", title: "Monthly CF" },
     { key: "bounce-penal", title: "Bounce & Penal" },
     { key: "loans-emi", title: "Loans and EMI" },
@@ -63,6 +95,8 @@ export class ExcelGeneratorService {
     'Salary Debit Instances',
     'Summary of Spend Analysis',
     'Summary of Utility Bill Payments',
+    'Executive Summary',
+    'Raw Data',
   ]);
 
   private readonly headerFirstCells = new Set<string>([
@@ -90,10 +124,78 @@ export class ExcelGeneratorService {
 
   private sheetMeta(report?: AnalysisReport): { client: string; bank: string; period: string } {
     return {
-      client: report?.applicant?.name || report?.accountInfo?.accountName || 'Client',
-      bank: report?.accountInfo?.bank || report?.applicant?.banks?.[0]?.name || 'Bank',
-      period: report?.applicant?.period ?? '-',
+      client: report?.applicant?.name || report?.accountInfo?.accountName || "Client",
+      bank: report?.accountInfo?.bank || report?.applicant?.banks?.[0]?.name || "Bank",
+      period: report?.applicant?.period ?? "-",
     };
+  }
+
+  private buildFallbackRawData(report: AnalysisReport): RawSheetRows {
+    const client = report.applicant?.name || "Client";
+    const bank = report.applicant?.banks?.[0];
+    const subtitle = bank
+      ? `Account Number: ${bank.account}, ${bank.name}${bank.ifsc && bank.ifsc !== "-" ? ` (${bank.ifsc})` : ""}`
+      : "Consolidated";
+    const rows: RawSheetRows = [
+      [client, null, null, null, "Index"],
+      [subtitle, null, null, null, "Go to top"],
+      [],
+      ["Raw Data", "Raw Data", "Raw Data"],
+      ["SN", "DATE", "Description", "Debit", "Credit", "Balance", "Category"],
+    ];
+    (report.transactions ?? []).forEach((txn, index) => {
+      rows.push([
+        index + 1,
+        txn.dateText,
+        txn.narration,
+        txn.debit > 0 ? txn.debit : null,
+        txn.credit > 0 ? txn.credit : null,
+        txn.balance ?? null,
+        txn.category,
+      ]);
+    });
+    return rows;
+  }
+
+  private hasProfessionalNavRows(rows: RawSheetRows): boolean {
+    if (rows.length < 2) return false;
+    return rows[0]?.[4] === "Index" && rows[1]?.[4] === "Go to top";
+  }
+
+  private applyNavHyperlinks(worksheet: ExcelJS.Worksheet, sheetName: string): void {
+    worksheet.eachRow((row) => {
+      let hasNavLabel = false;
+
+      row.eachCell((cell) => {
+        if (cell.value === "Index") {
+          hasNavLabel = true;
+          cell.value = {
+            text: "Index",
+            hyperlink: "#'Index'!A1",
+            tooltip: "Back to index",
+          };
+          cell.font = { color: { argb: "FF0563C1" }, underline: true, bold: true };
+        } else if (cell.value === "Go to top") {
+          hasNavLabel = true;
+          cell.value = {
+            text: "Go to top",
+            hyperlink: `#'${sheetName}'!A1`,
+            tooltip: "Back to top of sheet",
+          };
+          cell.font = { color: { argb: "FF0563C1" }, underline: true, bold: true };
+        }
+      });
+
+      if (hasNavLabel) {
+        row.eachCell((cell) => {
+          cell.fill = {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFE9EDF5" },
+          };
+        });
+      }
+    });
   }
 
   private renderRawSheet(
@@ -103,134 +205,93 @@ export class ExcelGeneratorService {
     report?: AnalysisReport,
   ): void {
     const maxCols = Math.max(...rows.map((row) => row.length), 1);
-    const headerText = `RMH Advisors Pvt Ltd - ${moduleTitle}`;
-    const meta = this.sheetMeta(report);
+    const professional = this.hasProfessionalNavRows(rows);
 
-    worksheet.addRow([headerText]);
-    worksheet.mergeCells(1, 1, 1, maxCols);
-    const headerCell = worksheet.getCell('A1');
-    headerCell.font = { bold: true, size: 14, color: { argb: 'FF1F4E79' } };
-    headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    headerCell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFE8EEF4' },
-    };
+    if (!professional) {
+      const headerText = `RMH Advisors Pvt Ltd - ${moduleTitle}`;
+      const meta = this.sheetMeta(report);
 
-    const metaRow = worksheet.addRow([
-      `Client: ${meta.client}  |  Bank: ${meta.bank}  |  Period: ${meta.period}`,
-    ]);
-    worksheet.mergeCells(metaRow.number, 1, metaRow.number, maxCols);
-    metaRow.getCell(1).font = { size: 10, italic: true };
-    metaRow.getCell(1).alignment = { horizontal: 'center' };
-    worksheet.addRow([]);
+      worksheet.addRow([headerText]);
+      worksheet.mergeCells(1, 1, 1, maxCols);
+      const headerCell = worksheet.getCell("A1");
+      headerCell.font = { bold: true, size: 14, color: { argb: "FF1F4E79" } };
+      headerCell.alignment = { horizontal: "center", vertical: "middle" };
+      headerCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFE8EEF4" },
+      };
+
+      const metaRow = worksheet.addRow([
+        `Client: ${meta.client}  |  Bank: ${meta.bank}  |  Period: ${meta.period}`,
+      ]);
+      worksheet.mergeCells(metaRow.number, 1, metaRow.number, maxCols);
+      metaRow.getCell(1).font = { size: 10, italic: true };
+      metaRow.getCell(1).alignment = { horizontal: "center" };
+      worksheet.addRow([]);
+    }
 
     rows.forEach((row) => {
-      const excelRow = worksheet.addRow(row as ExcelJS.CellValue[]);
-      const firstCell = excelRow.getCell(1).value;
-
-      if (typeof firstCell === 'string') {
-        if (this.sectionTitles.has(firstCell)) {
-          const lastCol = Math.max(row.length, maxCols);
-          if (lastCol > 1) {
-            worksheet.mergeCells(excelRow.number, 1, excelRow.number, lastCol);
-          }
-          excelRow.eachCell((cell) => {
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FF4F81BD' },
-            };
-          });
-        } else if (this.headerFirstCells.has(firstCell)) {
-          excelRow.font = { bold: true };
-          excelRow.eachCell((cell) => {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFE9EDF5' },
-            };
-            cell.border = {
-              top: { style: 'thin', color: { argb: 'FFB4C6E7' } },
-              bottom: { style: 'thin', color: { argb: 'FFB4C6E7' } },
-            };
-          });
-        } else if (
-          firstCell === 'Deposits' ||
-          firstCell === 'Withdrawals' ||
-          firstCell === 'Net Cash Flows' ||
-          firstCell === 'Closing Balance' ||
-          firstCell === 'Min EOD Balance' ||
-          firstCell === 'Max EOD Balance' ||
-          firstCell === 'Avg EOD Balance'
-        ) {
-          excelRow.font = { bold: true };
-          excelRow.eachCell((cell) => {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFF2F2F2' },
-            };
-          });
-        }
-      }
-
-      const second = row[1];
-      const third = row[2];
-      if (
-        typeof firstCell === 'string' &&
-        typeof second === 'number' &&
-        (third === 'YES' || third === 'Yes' || third === 'No')
-      ) {
-        excelRow.font = { bold: true };
-        excelRow.eachCell((cell, colNumber) => {
-          if (colNumber <= 3) {
-            cell.fill = {
-              type: 'pattern',
-              pattern: 'solid',
-              fgColor: { argb: 'FFF2F2F2' },
-            };
-          }
-        });
-      }
+      worksheet.addRow(row as ExcelJS.CellValue[]);
     });
 
-    worksheet.eachRow((row) => {
-      let hasNavLabel = false;
-
-      row.eachCell((cell) => {
-        if (cell.value === 'Index' || cell.value === 'Go to top') {
-          hasNavLabel = true;
-          const text = String(cell.value);
-          cell.value = {
-            text,
-            hyperlink: '#A1',
-          };
-          cell.font = {
-            color: { argb: 'FF0563C1' },
-            underline: true,
-            bold: true,
-          };
-        }
-      });
-
-      if (hasNavLabel) {
-        row.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFE9EDF5' },
-          };
-        });
-      }
-    });
+    applyConsistentSheetFormatting(worksheet);
+    this.applyNavHyperlinks(worksheet, worksheet.name);
 
     worksheet.columns.forEach((column, index) => {
-      column.width = index === 0 ? 28 : 16;
+      if (index === 0) column.width = 32;
+      else if (index === 1) column.width = 14;
+      else if (index === 2) column.width = 42;
+      else column.width = 16;
     });
 
-    worksheet.views = [{ state: 'frozen', ySplit: 4, activeCell: 'A5' }];
+    worksheet.views = [
+      { state: "frozen", ySplit: professional ? 3 : 4, activeCell: professional ? "A4" : "A5" },
+    ];
+  }
+
+  private addDisclaimerSheet(workbook: ExcelJS.Workbook, report: AnalysisReport): void {
+    const sheet = workbook.addWorksheet("Disclaimer", {
+      properties: { tabColor: { argb: "FF1F4E79" } },
+    });
+    sheet.addRow([]);
+    sheet.addRow([]);
+    sheet.addRow([]);
+    sheet.addRow(["REPORT NAME:  Bank Statement Analysis Report"]);
+    sheet.addRow(["Disclaimer:"]);
+    sheet.addRow([
+      "RMH Advisors / BSA is a data and information service. This report is generated from bank statement data supplied by the user. It should be used for analysis purposes only and does not constitute financial advice.",
+    ]);
+    sheet.getCell("A5").font = { bold: true, size: 12 };
+    sheet.getCell("A6").font = { bold: true, size: 11 };
+    sheet.getCell("A7").alignment = { wrapText: true, vertical: "top" };
+    sheet.getColumn(1).width = 100;
+  }
+
+  private addIndexSheet(workbook: ExcelJS.Workbook): void {
+    const sheet = workbook.addWorksheet("Index", {
+      properties: { tabColor: { argb: "FF4F81BD" } },
+    });
+    sheet.addRow(["Index"]);
+    sheet.addRow(["SN", "SHEETS", "DESCRIPTION"]);
+
+    this.masterModules.forEach((module, index) => {
+      const row = sheet.addRow([
+        index + 1,
+        module.title,
+        INDEX_SHEET_DESCRIPTIONS[module.title] ?? "Analysis module",
+      ]);
+      row.getCell(2).value = {
+        text: module.title,
+        hyperlink: `#'${module.title}'!A1`,
+        tooltip: `Open ${module.title}`,
+      };
+    });
+
+    sheet.getColumn(1).width = 6;
+    sheet.getColumn(2).width = 28;
+    sheet.getColumn(3).width = 64;
+    styleIndexSheet(sheet);
   }
 
   /**
@@ -1174,16 +1235,20 @@ export class ExcelGeneratorService {
   }
 
   private styleSummaryHeader(row: ExcelJS.Row): void {
-    row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     row.eachCell((cell) => {
+      cell.font = { name: "Calibri", bold: true, size: 10, color: { argb: EXCEL_THEME.primary } };
       cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1F4E79' },
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: EXCEL_THEME.headerBg },
       };
       cell.border = {
-        bottom: { style: 'thin', color: { argb: 'FFD0D7E2' } },
+        top: { style: "thin", color: { argb: EXCEL_THEME.borderStrong } },
+        bottom: { style: "thin", color: { argb: EXCEL_THEME.borderStrong } },
+        left: { style: "thin", color: { argb: EXCEL_THEME.border } },
+        right: { style: "thin", color: { argb: EXCEL_THEME.border } },
       };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
     });
   }
 
@@ -1196,19 +1261,16 @@ export class ExcelGeneratorService {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Transaction Summary');
     const allTxns = report.transactions || [];
-    const client = report.applicant?.name || report.accountInfo?.accountName || 'Client';
-    const bank = report.accountInfo?.bank || report.applicant?.banks?.[0]?.name || 'Bank';
+    const client = report.applicant?.name || report.accountInfo?.accountName || "Client";
+    const bank0 = report.applicant?.banks?.[0];
+    const subtitle = bank0
+      ? `Account Number: ${bank0.account}, ${bank0.name}${
+          bank0.ifsc && bank0.ifsc !== "-" ? ` (${bank0.ifsc})` : ""
+        }`
+      : report.accountInfo?.bank || "Bank";
 
-    worksheet.addRow([`Transaction Summary — ${client}`]);
-    worksheet.mergeCells('A1:I1');
-    worksheet.getCell('A1').font = { bold: true, size: 14 };
-    worksheet.getCell('A1').alignment = { horizontal: 'center' };
-    worksheet.addRow([`Bank: ${bank} · Period: ${report.applicant?.period ?? '-'}`]);
-    worksheet.mergeCells('A2:I2');
-    worksheet.getCell('A2').alignment = { horizontal: 'center' };
-    worksheet.addRow(['Click + on the left of each row to expand transaction details']);
-    worksheet.mergeCells('A3:I3');
-    worksheet.getCell('A3').font = { italic: true, size: 10 };
+    worksheet.addRow([client, null, null, null, null, null, null, null, "Index"]);
+    worksheet.addRow([subtitle, null, null, null, null, null, null, null, "Go to top"]);
     worksheet.addRow([]);
 
     const headerRow = worksheet.addRow([
@@ -1262,12 +1324,7 @@ export class ExcelGeneratorService {
         'Credit',
         'Narration',
       ]);
-      detailHeader.font = { bold: true };
-      detailHeader.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE8EEF4' },
-      };
+      this.styleSummaryHeader(detailHeader);
       detailHeader.outlineLevel = 1;
       detailHeader.hidden = true;
 
@@ -1297,9 +1354,12 @@ export class ExcelGeneratorService {
       summaryRight: false,
     };
 
+    applyConsistentSheetFormatting(worksheet);
+    this.applyNavHyperlinks(worksheet, "Transaction Summary");
     [5, 6, 7].forEach((col) => {
-      worksheet.getColumn(col).numFmt = '#,##0.00';
+      worksheet.getColumn(col).numFmt = INR_NUM_FMT;
     });
+    worksheet.views = [{ state: "frozen", ySplit: 4, activeCell: "A5" }];
     worksheet.getColumn(1).width = 32;
     worksheet.getColumn(2).width = 18;
     worksheet.getColumn(3).width = 22;
@@ -1323,6 +1383,16 @@ export class ExcelGeneratorService {
     options?: { party?: string },
   ): Promise<ExcelJS.Workbook> {
     switch (moduleName.toLowerCase()) {
+      case 'raw-data':
+        if (report.rawDataSheet && report.rawDataSheet.length > 0) {
+          return this.createWorkbookFromRawSheet('Raw Data', 'Raw Data', report.rawDataSheet, report);
+        }
+        return this.createWorkbookFromRawSheet(
+          'Raw Data',
+          'Raw Data',
+          this.buildFallbackRawData(report),
+          report,
+        );
       case 'executive-summary':
         return this.generateExecutiveSummary(report);
       case 'flags':
@@ -1380,37 +1450,11 @@ export class ExcelGeneratorService {
    */
   async generateMasterReport(report: AnalysisReport): Promise<ExcelJS.Workbook> {
     const workbook = new ExcelJS.Workbook();
-    const client = report.applicant?.name || report.accountInfo?.accountName || 'Client';
-    const bank = report.accountInfo?.bank || report.applicant?.banks?.[0]?.name || 'Bank';
+    workbook.creator = "RMH Bank Statement Analyzer";
+    workbook.created = new Date();
 
-    const cover = workbook.addWorksheet('Cover', { properties: { tabColor: { argb: 'FF1F4E79' } } });
-    cover.addRow(['RMH.BSA — Bank Statement Analysis']);
-    cover.mergeCells('A1:D1');
-    cover.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FF1F4E79' } };
-    cover.addRow([]);
-    cover.addRow(['Client', client]);
-    cover.addRow(['Bank', bank]);
-    cover.addRow(['Analysis ID', report.applicant?.analysisId ?? '-']);
-    cover.addRow(['Period', report.applicant?.period ?? '-']);
-    cover.addRow(['Risk Score', report.riskScore?.value ?? '-']);
-    cover.addRow(['Decision', report.riskScore?.decision ?? '-']);
-    cover.addRow([]);
-    cover.addRow(['Sheet', 'Section']);
-    const tocHeader = cover.lastRow;
-    if (tocHeader) this.styleSummaryHeader(tocHeader);
-
-    for (const module of this.masterModules) {
-      const row = cover.addRow([module.title, 'Open']);
-      row.getCell(1).value = {
-        text: module.title,
-        hyperlink: `#'${module.title}'!A1`,
-        tooltip: `Go to ${module.title}`,
-      };
-      row.getCell(1).font = { color: { argb: 'FF0563C1' }, underline: true };
-    }
-
-    cover.getColumn(1).width = 36;
-    cover.getColumn(2).width = 12;
+    this.addDisclaimerSheet(workbook, report);
+    this.addIndexSheet(workbook);
 
     for (const module of this.masterModules) {
       await this.appendModuleSheet(workbook, module.key, module.title, report);
@@ -1474,6 +1518,9 @@ export class ExcelGeneratorService {
     if (sourceSheet.properties.outlineProperties) {
       targetSheet.properties.outlineProperties = { ...sourceSheet.properties.outlineProperties };
     }
+
+    applyConsistentSheetFormatting(targetSheet);
+    this.applyNavHyperlinks(targetSheet, title);
   }
 
   /**

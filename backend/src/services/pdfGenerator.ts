@@ -1,7 +1,9 @@
+/// <reference lib="dom" />
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import puppeteer from "puppeteer-core";
 
 type PdfOptions = {
   filename: string;
@@ -33,7 +35,9 @@ function findBrowserExecutable(): string {
     if (found) return found;
   }
 
-  return process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "google-chrome";
+  return process.platform === "darwin"
+    ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    : "google-chrome";
 }
 
 function buildPrintUrl(options: PdfOptions): string {
@@ -42,6 +46,7 @@ function buildPrintUrl(options: PdfOptions): string {
   const url = new URL("/print/master", frontendOrigin);
   url.searchParams.set("id", options.analysisId);
   url.searchParams.set("filename", options.filename.replace(/\.pdf$/i, ""));
+  url.searchParams.set("pdf", "1");
 
   for (const [key, value] of Object.entries(options.query || {})) {
     if (value === undefined || value === null || value === "") continue;
@@ -51,12 +56,10 @@ function buildPrintUrl(options: PdfOptions): string {
   return url.toString();
 }
 
-export async function generateMasterSummaryPdf(options: PdfOptions): Promise<Buffer> {
+async function generateWithSpawnFallback(url: string, outputPath: string): Promise<void> {
   const browser = findBrowserExecutable();
-  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "bsa-master-pdf-"));
-  const outputPath = path.join(tempDir, options.filename);
+  const tempDir = path.dirname(outputPath);
   const userDataDir = path.join(tempDir, "profile");
-  const url = buildPrintUrl(options);
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
@@ -67,7 +70,7 @@ export async function generateMasterSummaryPdf(options: PdfOptions): Promise<Buf
         "--no-first-run",
         "--no-default-browser-check",
         "--no-pdf-header-footer",
-        "--virtual-time-budget=5000",
+        "--virtual-time-budget=30000",
         `--user-data-dir=${userDataDir}`,
         `--print-to-pdf=${outputPath}`,
         url,
@@ -81,8 +84,60 @@ export async function generateMasterSummaryPdf(options: PdfOptions): Promise<Buf
       else reject(new Error(`Browser PDF export failed with exit code ${code ?? "unknown"}.`));
     });
   });
+}
 
-  const pdf = await fs.promises.readFile(outputPath);
-  await fs.promises.rm(tempDir, { recursive: true, force: true });
-  return pdf;
+export async function generateMasterSummaryPdf(options: PdfOptions): Promise<Buffer> {
+  const url = buildPrintUrl(options);
+  const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "bsa-master-pdf-"));
+  const outputPath = path.join(tempDir, options.filename);
+  const executablePath = findBrowserExecutable();
+
+  try {
+    const browser = await puppeteer.launch({
+      executablePath,
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    });
+
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1280, height: 1800, deviceScaleFactor: 1 });
+      await page.goto(url, { waitUntil: "networkidle0", timeout: 120_000 });
+
+      await page.waitForFunction(
+        () => (globalThis as { __BSA_PDF_READY__?: boolean }).__BSA_PDF_READY__ === true,
+        { timeout: 120_000 },
+      );
+
+      await page.evaluate(() => {
+        document.querySelectorAll<HTMLAnchorElement>("a[href]").forEach((anchor) => {
+          const href = anchor.getAttribute("href");
+          if (!href) return;
+          try {
+            anchor.href = new URL(href, window.location.origin).href;
+          } catch {
+            /* keep original */
+          }
+        });
+      });
+
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: "12mm", bottom: "14mm", left: "10mm", right: "10mm" },
+      });
+
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  } catch (puppeteerError) {
+    console.warn("Puppeteer PDF export failed, trying Chrome print fallback:", puppeteerError);
+    await generateWithSpawnFallback(url, outputPath);
+    const pdf = await fs.promises.readFile(outputPath);
+    return pdf;
+  } finally {
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
+  }
 }

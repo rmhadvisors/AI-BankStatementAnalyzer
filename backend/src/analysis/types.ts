@@ -178,6 +178,7 @@ export interface AnalysisReport {
   billPayments?: Array<{ biller: string; category: string; monthly: number; lastPaid: string; consistent: boolean }>;
   recurringDebit?: Array<{ merchant: string; frequency: string; amount: number; occurrences: number; lastDate: string }>;
   recurringCredit?: Array<{ source: string; frequency: string; avgAmount: number; occurrences: number; lastDate: string }>;
+  rawDataSheet?: Array<Array<string | number | null>>;
   emiTrackerSheet?: Array<Array<string | number | null>>;
   tradeCreditsSheet?: Array<Array<string | number | null>>;
   tradeDebitsSheet?: Array<Array<string | number | null>>;

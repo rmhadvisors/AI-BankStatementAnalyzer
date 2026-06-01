@@ -712,6 +712,18 @@ function extractAccountInfo(lines) {
     info.push({ label, value });
   }
 
+  for (let index = info.length - 1; index >= 0; index -= 1) {
+    const entry = info[index];
+    if (!/account name/i.test(entry.label)) continue;
+    const value = entry.value || "";
+    if (
+      /^address\b/i.test(value) ||
+      (/\b(HDFC|ICICI|AXIS|SBI)\s+BANK\b/i.test(value) && !/\b(MR|MRS|MS|M\/S)\b/i.test(value))
+    ) {
+      info.splice(index, 1);
+    }
+  }
+
   const hasAccountName = info.some((entry) => /account name/i.test(entry.label));
   if (!hasAccountName) {
     const fallbackName = allLines.find((line) =>

@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
+import { useMasterPdfDownload } from "@/hooks/useMasterPdfDownload";
 import { DataTable, Panel, Stat } from "@/components/report/primitives";
 import { SectionHead } from "@/components/report/SectionHead";
 import { Button } from "@/components/ui/button";
@@ -111,15 +112,15 @@ function OverviewPage() {
   const staffLatest = staffEmoluments[staffEmoluments.length - 1] ?? { count: 0, total: 0, avg: 0, month: "—" };
   const { totalCredits, totalDebits, cashDeposits, cashWithdrawals, netFlow: netCashFlow, avgBalance } = momTotals;
 
-  const handleDownloadPdf = useCallback(() => {
-    window.open(`${window.location.origin}/print/master?autoprint=1`, "_blank", "noopener,noreferrer");
-  }, []);
+  const { downloading: downloadingPdf, downloadPdf } = useMasterPdfDownload();
 
   useEffect(() => {
     if (!autoPrint) return;
-    const timer = window.setTimeout(() => handleDownloadPdf(), 600);
+    const timer = window.setTimeout(() => {
+      void downloadPdf();
+    }, 600);
     return () => window.clearTimeout(timer);
-  }, [autoPrint, handleDownloadPdf]);
+  }, [autoPrint, downloadPdf]);
 
   return (
     <div className="space-y-6">
@@ -129,9 +130,14 @@ function OverviewPage() {
           title="Master Summary"
           subtitle="One-screen overview of every section — KPIs, trends and risk signals across all 20 modules."
           action={
-            <Button size="sm" onClick={handleDownloadPdf} className="no-print gap-2">
+            <Button
+              size="sm"
+              onClick={() => void downloadPdf()}
+              disabled={downloadingPdf}
+              className="no-print gap-2"
+            >
               <Download className="h-4 w-4" />
-              Download PDF
+              {downloadingPdf ? "Downloading..." : "Download PDF"}
             </Button>
           }
         />

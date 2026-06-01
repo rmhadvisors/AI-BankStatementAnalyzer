@@ -903,6 +903,21 @@ body.browser-master-pdf-export {
   text-align: center;
 }
 
+body.browser-master-pdf-export a[href] {
+  color: #0563c1 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+}
+
+body.browser-master-pdf-export .summary-card {
+  color: inherit;
+  text-decoration: none !important;
+}
+
+body.browser-master-pdf-export .summary-card:hover {
+  border-color: #4f81bd;
+}
+
 @media print {
   @page {
     size: A4;
