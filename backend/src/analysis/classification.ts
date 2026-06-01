@@ -1,7 +1,29 @@
 import type { TransactionDirection } from "./types";
 
 export function cleanNarration(value: string): string {
-  return value.replace(/\s+/g, " ").replace(/[|]+/g, " ").trim();
+  let cleaned = value.replace(/\s+/g, " ").replace(/[|]+/g, " ").trim();
+
+  const patternsToStrip = [
+    /STATEMENT PERIOD\s*:\s*\d{4}[-/]\d{2}[-/]\d{2}(?:\s+TO\s+\d{4}[-/]\d{2}[-/]\d{2})?/i,
+    /STATEMENT PERIOD\s*:\s*\d{2}[-/]\d{2}[-/]\d{2,4}(?:\s+TO\s+\d{2}[-/]\d{2}[-/]\d{2,4})?/i,
+    /OPENING BALANCE\s+TOTAL DEBIT\s+TOTAL CREDIT\s+CLOSING BALANCE\s*[\d,.\s-]*/i,
+    /TOTAL DEBIT\s+TOTAL CREDIT\s+CLOSING BALANCE\s*[\d,.\s-]*/i,
+    /TRANSACTION VALUE DATE PARTICULARS CHEQUE DEBIT CREDIT BALANCE DATE NO/i,
+    /TRANSACTION VALUE DATE PARTICULARS/i,
+    /CHEQUE DEBIT CREDIT BALANCE DATE NO/i,
+    /VALUE DATE PARTICULARS CHEQUE DEBIT CREDIT BALANCE/i,
+    /Opening Balance Total Debit Total Credit Closing Balance\s*[\d,.\s-]*/i,
+    /Opening Balance Total Total Closing Balance\s*[\d,.\s-]*/i,
+    /Transaction Value Date Particulars Cheque Debit Credit Balance Date No/i,
+    /Value Date Particulars Cheque Debit Credit Balance/i,
+    /\bValue Da\b/i
+  ];
+
+  for (const pattern of patternsToStrip) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  return cleaned.replace(/\s+/g, " ").trim();
 }
 
 export function classifyMode(narration: string): string {

@@ -1,4 +1,6 @@
 export type SummaryTxn = {
+  id?: string;
+  customParty?: string;
   party?: string;
   narration?: string;
   direction?: string;
@@ -6,6 +8,7 @@ export type SummaryTxn = {
   mode?: string;
   debit?: number;
   credit?: number;
+  amount?: number;
   dateText?: string;
 };
 
@@ -16,7 +19,21 @@ const FOOTER_PATTERNS = [
   /CONTINUED\s+ON\s+NEXT/i,
 ];
 
-const GARBAGE_ONLY = new Set(["TM", "NP", "DR", "CR", "TXN", "NA", "NIL", "UPI", "REF"]);
+const GARBAGE_ONLY = new Set([
+  "TM",
+  "NP",
+  "DR",
+  "CR",
+  "TXN",
+  "NA",
+  "NIL",
+  "UPI",
+  "REF",
+  "UTR",
+  "RRN",
+  "ID",
+  "NO",
+]);
 
 const GENERIC_PARTIES = new Set([
   "SELF",
@@ -29,7 +46,31 @@ const GENERIC_PARTIES = new Set([
   "NEFT DR",
 ]);
 
-const STRIP_PREFIX = /^(UPI|IMPS|NEFT|RTGS|ACH|NACH|BIL|POS|ATM|ECS|SI|REV|REF|TO|FROM|BY|DR|CR|TXN|TRANSFER|PAYMENT|PAY|FUND|FUNDS)[\s\-\/]*/i;
+const MODE_WORDS = [
+  "UPI",
+  "IMPS",
+  "NEFT",
+  "RTGS",
+  "CHEQUE",
+  "CHQ",
+  "CARD",
+  "ACH",
+  "NACH",
+  "ECS",
+  "SI",
+  "AUTOPAY",
+  "CASH",
+  "TRANSFER",
+  "TRF",
+  "SWEEP",
+  "INTEREST",
+  "BIL",
+  "POS",
+  "ATM",
+];
+
+const STRIP_PREFIX =
+  /^(UPI|IMPS|NEFT|RTGS|ACH|NACH|BIL|POS|ATM|ECS|SI|REV|REF|TO|FROM|BY|DR|CR|TXN|TRANSFER|TRF|PAYMENT|PAY|FUND|FUNDS)[\s\-\/]*/i;
 
 const BANK_EVENT_PATTERNS: Array<{ test: RegExp; label: string }> = [
   { test: /\bSWEEP\b/i, label: "BANK SWEEP" },
@@ -80,6 +121,29 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+export function extractTransactionMode(txnOrNarration: SummaryTxn | string): string {
+  const narration =
+    typeof txnOrNarration === "string"
+      ? txnOrNarration
+      : `${txnOrNarration.mode ?? ""} ${txnOrNarration.narration ?? ""}`;
+  const text = narration.toUpperCase();
+  if (/\bUPI\b/.test(text)) return "UPI";
+  if (/\bIMPS\b/.test(text)) return "IMPS";
+  if (/\bNEFT\b/.test(text)) return "NEFT";
+  if (/\bRTGS\b/.test(text)) return "RTGS";
+  if (/\bCHQ\b|\bCHEQUE\b|\bCLG\b/.test(text)) return "CHEQUE";
+  if (/\bCARD\b|\bPOS\b/.test(text)) return "CARD";
+  if (/\bACH\b|\bNACH\b|\bECS\b/.test(text)) return "ACH";
+  if (/\bAUTOPAY\b/.test(text)) return "AUTOPAY";
+  if (/\bSI\b/.test(text)) return "SI";
+  if (/\bCASH\b|\bATM\b/.test(text)) return "CASH";
+  if (/\bSWEEP\b/.test(text)) return "SWEEP";
+  if (/\bINTEREST\b|\bINT\.?\b/.test(text)) return "INTEREST";
+  if (/\bCHARGES?\b|\bFEE\b|\bPENAL\b/.test(text)) return "BANK CHARGES";
+  if (/\bTRANSFER\b|\bTRF\b|\bTPT\b/.test(text)) return "TRANSFER";
+  return "TRANSFER";
+}
+
 export function repairOcrSpacing(text: string): string {
   let out = text;
   const repairs: Array<[RegExp, string]> = [
@@ -92,15 +156,18 @@ export function repairOcrSpacing(text: string): string {
     [/\bAUT\s+OMATION\b/gi, "AUTOMATION"],
     [/\bENTER\s+PRISE\b/gi, "ENTERPRISE"],
     [/\bTRAINI\s+NG\b/gi, "TRAINING"],
+    [/\bOVE\s+RSEAS\b/gi, "OVERSEAS"],
     [/\bOVERSEA\s+S\b/gi, "OVERSEAS"],
     [/\bMANUFACTURI\s+NG\b/gi, "MANUFACTURING"],
     [/\bRAJ\s+ESH\b/gi, "RAJESH"],
     [/\bIN\s+DIA\b/gi, "INDIA"],
     [/\bCOM\s+FORT\b/gi, "COMFORT"],
     [/\bZE\s+ENAT\b/gi, "ZEENAT"],
+    [/\bRAMZA\s+N\b/gi, "RAMZAN"],
     [/\bRAM\s+ZAN\b/gi, "RAMZAN"],
     [/\bHAS\s+NANI\b/gi, "HASNANI"],
     [/\bJAL\s+PA\b/gi, "JALPA"],
+    [/\bJALP\s+A\b/gi, "JALPA"],
     [/\bRA\s+ITHATHA\b/gi, "RAITHATHA"],
     [/\bMANSO\s+ORALI\b/gi, "MANSOORALI"],
     [/\bCHANDRASHEKHA\s+R\b/gi, "CHANDRASHEKHAR"],
@@ -119,6 +186,9 @@ function stripReferenceTokens(tokens: string[]): string[] {
   return tokens.filter((token) => {
     const t = token.toUpperCase();
     if (GARBAGE_ONLY.has(t)) return false;
+    if (MODE_WORDS.includes(t)) return false;
+    if (/^(TO|FROM|BY|PAYMENT|PAY|FUND|FUNDS|TRANSFER|TRF|CR|DR)$/.test(t)) return false;
+    if (/^[A-Z]{4}0[A-Z0-9]+$/.test(t)) return false;
     if (/^[A-Z]{4}\d{6,}$/.test(t)) return false;
     if (/^[A-Z0-9]{10,}$/.test(t) && /\d/.test(t)) return false;
     if (/^\d{5,}$/.test(t)) return false;
@@ -131,6 +201,7 @@ function stripTrailingNumericCodes(text: string): string {
   return text
     .replace(/\b([A-Z]{3,8})\d{4,}\b/gi, "$1")
     .replace(/\b[A-Z]{2,4}\d{10,}\b/gi, "")
+    .replace(/\b[A-Z]{4}0[A-Z0-9]+\b/gi, " ")
     .replace(/\d{6,}/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -166,6 +237,16 @@ function expandAbbreviations(text: string): string {
   return out;
 }
 
+export function normalizePartyName(label: string): string {
+  let entity = repairOcrSpacing(label.toUpperCase());
+  entity = entity.replace(/[^A-Z0-9\s.&]/g, " ");
+  entity = normalizeWhitespace(entity);
+  entity = stripTrailingNumericCodes(entity);
+  entity = stripReferenceTokens(entity.split(/\s+/)).join(" ");
+  entity = expandAbbreviations(entity);
+  return normalizeWhitespace(entity) || "UNRECOGNIZED";
+}
+
 export function entityClusterKey(label: string): string {
   let key = repairOcrSpacing(label.toUpperCase());
   key = key.replace(/[^A-Z0-9\s]/g, " ");
@@ -180,11 +261,23 @@ function scoreEntity(label: string): number {
   const tokens = label.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return 0;
   if (label === "UNRECOGNIZED") return 0;
-  let score = Math.min(40, tokens.length * 8);
+  let score = Math.min(70, 45 + tokens.length * 8);
   if (/\b(LTD|LLP|PVT|ASSOCIATES|BANK|HOMES|ENTERPRISE|STUDIES)\b/i.test(label)) score += 20;
   if (label.length >= 8) score += 15;
   if (/^[A-Z]{2,4}$/.test(label)) score -= 20;
-  return score;
+  return Math.max(0, Math.min(98, score));
+}
+
+function rawPartyAliasFromNarration(raw: string): string | null {
+  if (!raw) return null;
+  let text = raw.toUpperCase();
+  text = text.replace(/[-_/:,@()#]+/g, " ");
+  text = normalizeWhitespace(text);
+  text = text.replace(STRIP_PREFIX, "");
+  text = stripTrailingNumericCodes(text);
+  const tokens = stripReferenceTokens(text.split(/\s+/).filter(Boolean));
+  const alias = normalizeWhitespace(tokens.join(" "));
+  return alias.length >= 3 ? alias : null;
 }
 
 export function extractEntityFromText(raw: string): { entity: string; confidence: number } {
@@ -224,8 +317,7 @@ export function extractEntityFromText(raw: string): { entity: string; confidence
   tokens = tokens.filter((t) => !GENERIC_PARTIES.has(t) && t.length > 1);
   if (tokens.length === 0) return { entity: "UNRECOGNIZED", confidence: 0 };
 
-  let entity = expandAbbreviations(tokens.join(" "));
-  entity = normalizeWhitespace(entity);
+  let entity = normalizePartyName(tokens.join(" "));
 
   const aliasAfter = matchMerchantAlias(entity);
   if (aliasAfter) return { entity: aliasAfter, confidence: 93 };
@@ -281,12 +373,74 @@ export function classifySummaryLabelForTransaction(txn: SummaryTxn): string {
   return "UNRECOGNIZED";
 }
 
+function classifyPartyCategory(party: string, txn: SummaryTxn): string {
+  const text = `${party} ${txn.category ?? ""} ${txn.narration ?? ""}`.toUpperCase();
+  if (/\b(MSEDCL|MSEB|ELECTRIC|POWER|GAS|WATER|AIRTEL|JIO|VODAFONE|UTILITY)\b/.test(text)) return "UTILITY";
+  if (/\b(GST|TDS|TAX|CBDT|PF|ESIC)\b/.test(text)) return "STATUTORY";
+  if (/\b(BANK CHARGES|CHARGE|FEE|PENAL)\b/.test(text)) return "BANK CHARGES";
+  if (/\b(BANK INTEREST|INTEREST|INT ON)\b/.test(text)) return "INTEREST";
+  if (/\b(EMI|LOAN|NACH|ECS|FINANCE|FINSERV)\b/.test(text)) return "LOAN/EMI";
+  if (/\b(SALARY|PAYROLL|WAGES)\b/.test(text)) return "SALARY";
+  if (/\b(CASH)\b/.test(text)) return "CASH";
+  return txn.category?.toUpperCase() || "OTHER";
+}
+
+export type PartyLedgerExtraction = {
+  transaction_date: string;
+  amount: number;
+  debit_credit: string;
+  transaction_mode: string;
+  party_name: string;
+  normalized_party_name: string;
+  category: string;
+  confidence: number;
+};
+
+export function extractPartyLedgerFields(txn: SummaryTxn): PartyLedgerExtraction {
+  if (txn.customParty) {
+    const debit = Number(txn.debit || 0);
+    const credit = Number(txn.credit || 0);
+    const debitCredit = credit >= debit ? "Credit" : "Debit";
+    return {
+      transaction_date: txn.dateText ?? "",
+      amount: Number(txn.amount ?? (debitCredit === "Credit" ? credit : debit) ?? 0),
+      debit_credit: debitCredit,
+      transaction_mode: extractTransactionMode(txn),
+      party_name: txn.customParty,
+      normalized_party_name: txn.customParty.toUpperCase(),
+      category: "USER ASSIGNED",
+      confidence: 100,
+    };
+  }
+
+  const { entity, confidence } = extractEntityFromTransaction(txn);
+  const normalized = confidence >= 20 ? normalizePartyName(entity) : "UNRECOGNIZED";
+  const debit = Number(txn.debit || 0);
+  const credit = Number(txn.credit || 0);
+  const debitCredit = credit >= debit ? "Credit" : "Debit";
+
+  return {
+    transaction_date: txn.dateText ?? "",
+    amount: Number(txn.amount ?? (debitCredit === "Credit" ? credit : debit) ?? 0),
+    debit_credit: debitCredit,
+    transaction_mode: extractTransactionMode(txn),
+    party_name: entity,
+    normalized_party_name: normalized,
+    category: classifyPartyCategory(normalized, txn),
+    confidence,
+  };
+}
+
 export type TransactionSummaryRow = {
   party: string;
   txnCount: number;
   debit: number;
   credit: number;
   net: number;
+  transactionModes: string[];
+  aliases: string[];
+  category: string;
+  confidence: number;
 };
 
 function pickCanonicalLabel(labels: string[]): Map<string, string> {
@@ -325,7 +479,7 @@ function tokenSimilarity(a: string, b: string): number {
 }
 
 export function groupTransactionsByParty(transactions: SummaryTxn[]): Map<string, SummaryTxn[]> {
-  const labels = transactions.map((txn) => classifySummaryLabelForTransaction(txn));
+  const labels = transactions.map((txn) => extractPartyLedgerFields(txn).normalized_party_name);
   const canonicalMap = pickCanonicalLabel([...new Set(labels)]);
   const map = new Map<string, SummaryTxn[]>();
 
@@ -340,30 +494,84 @@ export function groupTransactionsByParty(transactions: SummaryTxn[]): Map<string
 
 export function buildTransactionSummary(transactions: SummaryTxn[]): TransactionSummaryRow[] {
   const rawLabels: string[] = [];
-  const perTxn: Array<{ label: string; debit: number; credit: number }> = [];
+  const perTxn: Array<{
+    label: string;
+    alias: string | null;
+    debit: number;
+    credit: number;
+    mode: string;
+    category: string;
+    confidence: number;
+  }> = [];
 
   transactions.forEach((txn) => {
-    const label = classifySummaryLabelForTransaction(txn);
+    const extraction = extractPartyLedgerFields(txn);
+    const label = extraction.normalized_party_name;
     rawLabels.push(label);
-    perTxn.push({ label, debit: Number(txn.debit || 0), credit: Number(txn.credit || 0) });
+    perTxn.push({
+      label,
+      alias: rawPartyAliasFromNarration(txn.narration ?? ""),
+      debit: Number(txn.debit || 0),
+      credit: Number(txn.credit || 0),
+      mode: extraction.transaction_mode,
+      category: extraction.category,
+      confidence: extraction.confidence,
+    });
   });
 
   const canonicalMap = pickCanonicalLabel([...new Set(rawLabels)]);
 
-  const summary: Record<string, { party: string; txnCount: number; debit: number; credit: number }> = {};
+  const summary: Record<
+    string,
+    {
+      party: string;
+      txnCount: number;
+      debit: number;
+      credit: number;
+      modes: Set<string>;
+      aliases: Set<string>;
+      categories: Map<string, number>;
+      confidenceTotal: number;
+    }
+  > = {};
 
-  perTxn.forEach(({ label, debit, credit }) => {
+  perTxn.forEach(({ label, alias, debit, credit, mode, category, confidence }) => {
     const party = canonicalMap.get(entityClusterKey(label)) ?? label;
     if (!summary[party]) {
-      summary[party] = { party, txnCount: 0, debit: 0, credit: 0 };
+      summary[party] = {
+        party,
+        txnCount: 0,
+        debit: 0,
+        credit: 0,
+        modes: new Set(),
+        aliases: new Set(),
+        categories: new Map(),
+        confidenceTotal: 0,
+      };
     }
     summary[party].txnCount += 1;
     summary[party].debit += debit;
     summary[party].credit += credit;
+    summary[party].modes.add(mode);
+    if (label !== party) summary[party].aliases.add(label);
+    if (alias && alias !== party && normalizePartyName(alias) === party) summary[party].aliases.add(alias);
+    summary[party].categories.set(category, (summary[party].categories.get(category) ?? 0) + 1);
+    summary[party].confidenceTotal += confidence;
   });
 
   return Object.values(summary)
-    .map((row) => ({ ...row, net: row.credit - row.debit }))
+    .map((row) => ({
+      party: row.party,
+      txnCount: row.txnCount,
+      debit: row.debit,
+      credit: row.credit,
+      net: row.credit - row.debit,
+      transactionModes: [...row.modes].sort(),
+      aliases: [...row.aliases].sort(),
+      category:
+        [...row.categories.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "OTHER",
+      confidence: Math.round(row.confidenceTotal / Math.max(row.txnCount, 1)),
+    }))
     .sort((a, b) => {
       if (b.txnCount !== a.txnCount) return b.txnCount - a.txnCount;
       return b.credit + b.debit - (a.credit + a.debit);

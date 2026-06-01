@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import { AnalysisReport } from '../analysis/types';
 import {
   buildTransactionSummary,
+  extractPartyLedgerFields,
   groupTransactionsByParty,
 } from '../analysis/transactionSummary';
 
@@ -1199,23 +1200,26 @@ export class ExcelGeneratorService {
     const bank = report.accountInfo?.bank || report.applicant?.banks?.[0]?.name || 'Bank';
 
     worksheet.addRow([`Transaction Summary — ${client}`]);
-    worksheet.mergeCells('A1:F1');
+    worksheet.mergeCells('A1:I1');
     worksheet.getCell('A1').font = { bold: true, size: 14 };
     worksheet.getCell('A1').alignment = { horizontal: 'center' };
     worksheet.addRow([`Bank: ${bank} · Period: ${report.applicant?.period ?? '-'}`]);
-    worksheet.mergeCells('A2:F2');
+    worksheet.mergeCells('A2:I2');
     worksheet.getCell('A2').alignment = { horizontal: 'center' };
     worksheet.addRow(['Click + on the left of each row to expand transaction details']);
-    worksheet.mergeCells('A3:F3');
+    worksheet.mergeCells('A3:I3');
     worksheet.getCell('A3').font = { italic: true, size: 10 };
     worksheet.addRow([]);
 
     const headerRow = worksheet.addRow([
-      'Transaction',
+      'Counterparty',
+      'Category',
+      'Transaction Modes',
       'No. of Transactions',
       'Debit Amount',
       'Credit Amount',
       'Net Transaction',
+      'Confidence',
       'Go to details',
     ]);
     this.styleSummaryHeader(headerRow);
@@ -1229,12 +1233,16 @@ export class ExcelGeneratorService {
 
       const summaryExcelRow = worksheet.addRow([
         row.party,
+        row.category,
+        row.transactionModes.join(', '),
         row.txnCount,
         row.debit,
         row.credit,
         row.net,
+        `${row.confidence}%`,
         `Row ${detailStartRow}`,
       ]);
+      summaryExcelRow.font = { bold: true };
       summaryExcelRow.font = { bold: true };
       summaryExcelRow.getCell(1).value = {
         text: row.party,
@@ -1245,9 +1253,11 @@ export class ExcelGeneratorService {
 
       const detailHeader = worksheet.addRow([
         '',
-        'Party',
+        'Party Name',
         'Date',
         'Type',
+        'Mode',
+        'Category',
         'Debit',
         'Credit',
         'Narration',
@@ -1261,14 +1271,16 @@ export class ExcelGeneratorService {
       detailHeader.outlineLevel = 1;
       detailHeader.hidden = true;
 
-      const detailTxns = partyGroups.get(row.party) ?? [];
-
+      const detailTxns = partyGroups.get(row.party) || [];
       detailTxns.forEach((txn) => {
+        const extraction = extractPartyLedgerFields(txn);
         const detailRow = worksheet.addRow([
           '',
-          txn.party || '',
+          txn.party || extraction.normalized_party_name,
           txn.dateText || '',
-          txn.direction || '',
+          txn.direction || extraction.debit_credit,
+          extraction.transaction_mode,
+          extraction.category,
           Number(txn.debit || 0) || '',
           Number(txn.credit || 0) || '',
           txn.narration || '',
@@ -1285,16 +1297,19 @@ export class ExcelGeneratorService {
       summaryRight: false,
     };
 
-    [2, 3, 4, 5].forEach((col) => {
+    [5, 6, 7].forEach((col) => {
       worksheet.getColumn(col).numFmt = '#,##0.00';
     });
     worksheet.getColumn(1).width = 32;
     worksheet.getColumn(2).width = 18;
-    worksheet.getColumn(3).width = 16;
-    worksheet.getColumn(4).width = 16;
+    worksheet.getColumn(3).width = 22;
+    worksheet.getColumn(4).width = 18;
     worksheet.getColumn(5).width = 16;
-    worksheet.getColumn(6).width = 14;
-    worksheet.getColumn(7).width = 48;
+    worksheet.getColumn(6).width = 16;
+    worksheet.getColumn(7).width = 16;
+    worksheet.getColumn(8).width = 14;
+    worksheet.getColumn(9).width = 16;
+    worksheet.getColumn(10).width = 48;
 
     return workbook;
   }
