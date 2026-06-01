@@ -4,20 +4,13 @@ import { normalizeTransactions } from "./normalize";
 import { buildFlags, riskFromFlags } from "./risk";
 import { buildAllModuleSheets } from "./moduleSheets";
 import type { AnalysisInput, BounceEvent } from "./types";
-import { accountId, bankName, formatINR, getInfo, groupBy, round, totalBy } from "./utils";
+import { accountId, bankName, formatINR, getInfo, groupBy, resolveAccountHolderName, round, totalBy } from "./utils";
 
 export function analyzeBankStatements(input: AnalysisInput) {
   const transactions = normalizeTransactions(input.statements);
   const months = buildMonthMetrics(transactions);
   const primaryStatement = input.statements[0];
-  const extractedAccountName =
-    getInfo(primaryStatement, /account name/i) ||
-    getInfo(primaryStatement, /customer name/i) ||
-    getInfo(primaryStatement, /account holder/i);
-  const accountName =
-    (extractedAccountName && extractedAccountName.trim()) ||
-    (input.applicantName && input.applicantName.trim()) ||
-    "Applicant";
+  const accountName = resolveAccountHolderName(primaryStatement, input.applicantName);
   const accountNumber = primaryStatement ? accountId(primaryStatement, 0) : "-";
   const bank = primaryStatement ? bankName(primaryStatement) : "-";
   const totalCredits = totalBy(transactions, "credit");

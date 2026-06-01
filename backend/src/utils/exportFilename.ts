@@ -1,17 +1,57 @@
+import type { ExtractedStatement } from "../analysis/types";
+import {
+  accountId,
+  accountNumberSuffix,
+  bankName,
+  formatBankDisplayName,
+  resolveAccountHolderName,
+} from "../analysis/utils";
+
 type ReportForExport = {
   applicant?: { name?: string; banks?: Array<{ name?: string }> };
-  accountInfo?: { bank?: string; accountName?: string };
+  accountInfo?: { bank?: string; accountName?: string; accountNumber?: string };
 };
 
 export function sanitizeFilenamePart(value: string, maxLen = 60): string {
   return (
     value
       .replace(/[<>:"/\\|?*]/g, "")
-      .replace(/\s+/g, "_")
-      .replace(/_+/g, "_")
-      .replace(/^_|_$/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
       .slice(0, maxLen) || "Export"
   );
+}
+
+function filenameBaseParts(report: ReportForExport): { client: string; bank: string; account: string } {
+  const client = sanitizeFilenamePart(
+    report.applicant?.name || report.accountInfo?.accountName || "Client",
+  );
+  const bank = sanitizeFilenamePart(
+    formatBankDisplayName(report.accountInfo?.bank || report.applicant?.banks?.[0]?.name || "Bank"),
+  );
+  const account = sanitizeFilenamePart(
+    accountNumberSuffix(report.accountInfo?.accountNumber || ""),
+    12,
+  );
+  return { client, bank, account };
+}
+
+export function buildStatementExcelFilename(
+  statement: Pick<ExtractedStatement, "accountInfo" | "fileName">,
+  options?: { moduleLabel?: string },
+): string {
+  const pseudo: ExtractedStatement = {
+    fileName: statement.fileName,
+    accountInfo: statement.accountInfo,
+    transactions: [],
+  };
+  const client = sanitizeFilenamePart(resolveAccountHolderName(pseudo));
+  const bank = sanitizeFilenamePart(bankName(pseudo));
+  const account = sanitizeFilenamePart(accountNumberSuffix(accountId(pseudo, 0)), 12);
+  const modulePart = options?.moduleLabel
+    ? `_${sanitizeFilenamePart(MODULE_FILENAME_LABELS[options.moduleLabel] ?? options.moduleLabel, 40)}`
+    : "";
+  return `${client}_${bank}_${account}${modulePart}.xlsx`;
 }
 
 /** Human-readable module slug for download filenames. */
@@ -28,20 +68,11 @@ export function buildExcelExportFilename(
   report: ReportForExport,
   options?: { moduleLabel?: string },
 ): string {
-  const rawModule = options?.moduleLabel;
-  const moduleLabel = rawModule
-    ? MODULE_FILENAME_LABELS[rawModule] ?? rawModule
-    : undefined;
-  const client = sanitizeFilenamePart(
-    report.applicant?.name || report.accountInfo?.accountName || "Client",
-  );
-  const bank = sanitizeFilenamePart(
-    report.accountInfo?.bank || report.applicant?.banks?.[0]?.name || "Bank",
-  );
-  const modulePart = moduleLabel
-    ? `_${sanitizeFilenamePart(moduleLabel, 40)}`
-    : "_Master_Report";
-  return `${client}_${bank}${modulePart}.xlsx`;
+  const { client, bank, account } = filenameBaseParts(report);
+  const modulePart = options?.moduleLabel
+    ? `_${sanitizeFilenamePart(MODULE_FILENAME_LABELS[options.moduleLabel] ?? options.moduleLabel, 40)}`
+    : "";
+  return `${client}_${bank}_${account}${modulePart}.xlsx`;
 }
 
 export function buildMasterSummaryPdfFilename(report: ReportForExport): string {

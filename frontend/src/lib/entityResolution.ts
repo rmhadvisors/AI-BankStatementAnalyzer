@@ -97,10 +97,14 @@ const BANK_CODE_MAP: Record<string, string> = {
   PUNB: "PUNJAB NATIONAL BANK",
 };
 
-const MERCHANT_ALIASES: Array<{ test: RegExp; label: string }> = [
+const PAYMENT_RAIL_ALIASES: Array<{ test: RegExp; label: string }> = [
   { test: /\bPAY\s*TM\b|\bPAYTM\b|\bPA\s*Y\s*TM\b|\bPAYT\s*M\b/i, label: "PAYTM PAYMENTS" },
   { test: /\bPHONE\s*PE\b|\bPHO\s*NE\s*PE\b/i, label: "PHONEPE" },
   { test: /\bGOOGLE\s*PAY\b|\bGPAY\b/i, label: "GOOGLE PAY" },
+];
+
+const MERCHANT_ALIASES: Array<{ test: RegExp; label: string }> = [
+  ...PAYMENT_RAIL_ALIASES,
   { test: /\bGOOGLE\s*PLAY\b/i, label: "GOOGLE PLAY" },
   { test: /\bAMAZON\b|\bAMZN\b/i, label: "AMAZON" },
   { test: /\bAIRTEL\b/i, label: "AIRTEL" },
@@ -108,7 +112,11 @@ const MERCHANT_ALIASES: Array<{ test: RegExp; label: string }> = [
   { test: /\bVODAFONE\b|\bVI\s+POST\b/i, label: "VODAFONE IDEA" },
   { test: /\bCBDT\b/i, label: "CBDT" },
   { test: /\bGODADDY\b/i, label: "GODADDY" },
+  { test: /\bBLINKIT\b/i, label: "BLINKIT" },
 ];
+
+const UPI_RAIL_SEGMENT =
+  /@|PAYTM|PHONEPE|GPAY|GOOGLEPAY|\bQR\b|YESB0|SBIN0|HDFC0|ICIC0|UTIB0|BARB0|PTYBL|NAVI0/i;
 
 const ABBREV_EXPANSIONS: Array<[RegExp, string]> = [
   [/\bASSO\b/gi, "ASSOCIATES"],
@@ -222,10 +230,88 @@ function extractBankCodeEntity(text: string): string | null {
   return null;
 }
 
-function matchMerchantAlias(text: string): string | null {
-  for (const alias of MERCHANT_ALIASES) {
+const PAYMENT_RAIL_LABELS = new Set(PAYMENT_RAIL_ALIASES.map((alias) => alias.label));
+
+function matchMerchantAlias(text: string, options?: { includePaymentRails?: boolean }): string | null {
+  const pool =
+    options?.includePaymentRails === false
+      ? MERCHANT_ALIASES.filter((alias) => !PAYMENT_RAIL_LABELS.has(alias.label))
+      : MERCHANT_ALIASES;
+  for (const alias of pool) {
     if (alias.test.test(text)) return alias.label;
   }
+  return null;
+}
+
+function isGarbagePartyIdentifier(party: string): boolean {
+  const upper = party.trim().toUpperCase();
+  if (!upper || GENERIC_PARTIES.has(upper)) return true;
+  if (/^[A-Z]{4}0[A-Z0-9]{8,}/.test(upper)) return true;
+  if (/^(YESB|SBIN|HDFC|ICIC|UTIB|BARB|KKBK|PUNB|CBIN|MAHB)\d/.test(upper)) return true;
+  if (/\d{10,}/.test(upper) && /[A-Z]{4,}/.test(upper)) return true;
+  if (/^(UPI|NEFT|RTGS|IMPS)[\s\-/]/.test(upper)) return true;
+  return false;
+}
+
+function isPaymentRailEntity(entity: string): boolean {
+  return PAYMENT_RAIL_ALIASES.some((alias) => alias.label === entity.toUpperCase());
+}
+
+function extractUpiHyphenCounterparty(narration: string): string | null {
+  const text = repairOcrSpacing(narration);
+  const match = text.match(/\bUPI[-/](.+)$/i);
+  if (!match?.[1]) return null;
+
+  const segments = match[1].split("-").map((part) => normalizeWhitespace(part)).filter(Boolean);
+  for (const segment of segments) {
+    if (UPI_RAIL_SEGMENT.test(segment)) continue;
+    if (/^\d{6,}$/.test(segment)) continue;
+    if (/^[A-Z]{4}0[A-Z0-9]+$/i.test(segment)) continue;
+    const entity = normalizePartyName(segment);
+    if (entity && entity !== "UNRECOGNIZED" && entity.length >= 3) return entity;
+  }
+  return null;
+}
+
+function extractPartyFromNarration(narration: string): string | null {
+  const text = narration.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\bUPI[-]([A-Z][A-Z0-9 .&()/-]{2,60}?)-(?:PAYTM|PHONEPE|GPAY|YESB|SBIN|HDFC|@)/i,
+    /\bNEFT[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]*\d[A-Z0-9]*[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bRTGS[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]*\d[A-Z0-9]*[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bRTGS\s+TO\s+([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bIMPS[\s/:-]+(?:\d+[\s/:-]+){0,2}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|\d{2}:\d{2})/i,
+    /\b(?:M\/S|MRS|MR|MS)\.?\s+([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const hit = text.match(pattern);
+    if (hit?.[1] && hit[1].trim().length >= 3) return hit[1].trim();
+  }
+  return null;
+}
+
+function extractCounterpartyFromNarration(narration: string): { entity: string; confidence: number } | null {
+  const upiCounterparty = extractUpiHyphenCounterparty(narration);
+  if (upiCounterparty) {
+    return { entity: upiCounterparty, confidence: Math.max(90, scoreEntity(upiCounterparty)) };
+  }
+
+  const fromClassifier = extractPartyFromNarration(narration);
+  if (fromClassifier && !isGarbagePartyIdentifier(fromClassifier)) {
+    const entity = normalizePartyName(fromClassifier);
+    if (entity !== "UNRECOGNIZED") {
+      return { entity, confidence: Math.max(85, scoreEntity(entity)) };
+    }
+  }
+
+  const siMerchant = extractFromSiMandate(narration);
+  if (siMerchant) {
+    const entity = normalizePartyName(siMerchant);
+    if (entity.length >= 3) {
+      return { entity, confidence: 88 };
+    }
+  }
+
   return null;
 }
 
@@ -291,8 +377,8 @@ export function extractEntityFromText(raw: string): { entity: string; confidence
     }
   }
 
-  const aliasHit = matchMerchantAlias(raw);
-  if (aliasHit) return { entity: aliasHit, confidence: 95 };
+  const counterparty = extractCounterpartyFromNarration(raw);
+  if (counterparty) return counterparty;
 
   let text = repairOcrSpacing(raw.toUpperCase());
   text = text.replace(/[-_/:,@()#]+/g, " ");
@@ -319,8 +405,13 @@ export function extractEntityFromText(raw: string): { entity: string; confidence
 
   let entity = normalizePartyName(tokens.join(" "));
 
-  const aliasAfter = matchMerchantAlias(entity);
+  const aliasAfter = matchMerchantAlias(entity, { includePaymentRails: false });
   if (aliasAfter) return { entity: aliasAfter, confidence: 93 };
+
+  const paymentRail = matchMerchantAlias(entity, { includePaymentRails: true });
+  if (paymentRail && isPaymentRailEntity(paymentRail)) {
+    return { entity: paymentRail, confidence: 70 };
+  }
 
   if (/^[0-9\s]+$/.test(entity)) return { entity: "UNRECOGNIZED", confidence: 0 };
   if (entity.length < 3) return { entity: "UNRECOGNIZED", confidence: 5 };
@@ -332,25 +423,39 @@ export function extractEntityFromText(raw: string): { entity: string; confidence
 export function extractEntityFromTransaction(txn: SummaryTxn): { entity: string; confidence: number } {
   const narration = (txn.narration ?? "").toString();
   const party = (txn.party ?? "").toString().trim();
+  const partyIsGarbage = isGarbagePartyIdentifier(party);
 
-  if (/\bEMI\b/i.test(narration) && !isRecognizablePartyName(party)) {
+  if (/\bEMI\b/i.test(narration) && (!party || partyIsGarbage || !isRecognizablePartyName(party))) {
     return { entity: "EMI PAYMENT", confidence: 80 };
   }
 
+  const narrationCounterparty = extractCounterpartyFromNarration(narration);
+  if (narrationCounterparty && !isPaymentRailEntity(narrationCounterparty.entity)) {
+    return narrationCounterparty;
+  }
+
   const attempts: string[] = [];
-  if (party && !GENERIC_PARTIES.has(party.toUpperCase())) {
+  if (party && !partyIsGarbage && !GENERIC_PARTIES.has(party.toUpperCase())) {
     attempts.push(party);
   }
   attempts.push(narration);
-  if (party && narration) attempts.push(`${party} ${narration}`);
+  if (party && narration && !partyIsGarbage) attempts.push(`${party} ${narration}`);
 
-  let best = { entity: "UNRECOGNIZED", confidence: 0 };
+  let best = narrationCounterparty ?? { entity: "UNRECOGNIZED", confidence: 0 };
   for (const attempt of attempts) {
     const result = extractEntityFromText(attempt);
     if (result.confidence > best.confidence) best = result;
   }
 
-  if (best.confidence < 25 && party) {
+  if (
+    narrationCounterparty &&
+    isPaymentRailEntity(best.entity) &&
+    !isPaymentRailEntity(narrationCounterparty.entity)
+  ) {
+    return narrationCounterparty;
+  }
+
+  if (best.confidence < 25 && party && !partyIsGarbage) {
     const partyResult = extractEntityFromText(party);
     if (partyResult.confidence > best.confidence) best = partyResult;
   }

@@ -91,8 +91,10 @@ export function extractParty(narration: string): string {
   const upper = text.toUpperCase();
 
   const patterns: RegExp[] = [
-    /\bNEFT[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]+[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
-    /\bRTGS[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]+[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bUPI[-]([A-Z][A-Z0-9 .&()/-]{2,60}?)-(?:PAYTM|PHONEPE|GPAY|GOOGLEPAY|YESB|SBIN|HDFC|ICIC|UTIB|BARB|@)/i,
+    /\bNEFT[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]*\d[A-Z0-9]*[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bRTGS[\s-]+(?:CR|DR|IN|OUT)?[\s-]*(?:[A-Z0-9]*\d[A-Z0-9]*[\s-]+){0,3}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
+    /\bRTGS\s+TO\s+([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
     /\bIMPS[\s/:-]+(?:\d+[\s/:-]+){0,2}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|\d{2}:\d{2})/i,
     /\bUPI[\s/:-]+(?:\d+[\s/:-]+){0,2}([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|\d{2}:\d{2})/i,
     /\b(?:TO|BY|FROM|DR|CR)[\s/-]+([A-Z][A-Z0-9 .&()/-]{2,60}?)(?:\s{2,}|$|-\d)/i,
