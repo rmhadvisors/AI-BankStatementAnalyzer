@@ -6,6 +6,10 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 export default defineConfig(({ mode }) => ({
+  build: {
+    minify: false,
+    sourcemap: false,
+  },
   plugins: [
     tanstackStart({ server: { entry: "server" } }),
     react(),
