@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Panel } from "./primitives";
-import type { RawRow } from "@/data/rawSheets";
 import {
   execSheet,
   flagsSheet,
@@ -48,6 +47,8 @@ const LIVE_SHEET_MAP: Record<string, Array<Array<string | number | null>>> = {
   "Recurring Debit": recurringDebitSheet as unknown as Array<Array<string | number | null>>,
   "Recurring Credit": recurringCreditSheet as unknown as Array<Array<string | number | null>>,
 };
+
+type RawRow = (string | number | null)[];
 
 const MODULE_SLUG_MAP: Record<string, string> = {
   "Exec Summary": "executive-summary",
@@ -136,27 +137,10 @@ export function RawSheet({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const [rawSheetsState, setRawSheetsState] = useState<Record<string, RawRow[]> | null>(null);
-  useEffect(() => {
-    let mounted = true;
-    import("@/data/rawSheets")
-      .then((m) => {
-        if (mounted) setRawSheetsState((m as any).rawSheets ?? null);
-      })
-      .catch(() => {
-        // ignore; sample data not critical
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
   const rows = useMemo(() => {
     const live = resolveLiveRows(String(name));
-    if (live) return live;
-    if (rawSheetsState) return (rawSheetsState as Record<string, RawRow[]>)[name];
-    return undefined;
-  }, [name, rawSheetsState]);
+    return live ?? undefined;
+  }, [name]);
 
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
