@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { Panel } from "./primitives";
-import { rawSheets, type RawRow } from "@/data/rawSheets";
+import type { RawRow } from "@/data/rawSheets";
 import {
   execSheet,
   flagsSheet,
@@ -12,11 +12,27 @@ import {
   emiTrackerSheet,
   tradeCreditsSheet,
   tradeDebitsSheet,
-  highestTnsSheet,
-  internalGroupSheet,
-  circularSheet,
-  netTransactionsSheet,
-  salarySheet,
+  const [rawSheetsState, setRawSheetsState] = useState<Record<string, RawRow[]> | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    import("@/data/rawSheets")
+      .then((m) => {
+        if (mounted) setRawSheetsState((m as any).rawSheets ?? null);
+      })
+      .catch(() => {
+        // ignore; sample data not critical
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const rows = useMemo(() => {
+    const live = resolveLiveRows(String(name));
+    if (live) return live;
+    if (rawSheetsState) return (rawSheetsState as Record<string, RawRow[]>)[name];
+    return undefined;
+  }, [name, rawSheetsState]);
   staffEmolumentsSheet,
   spendAnalysisSheet,
   billPaymentsSheet,
