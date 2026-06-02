@@ -9,6 +9,9 @@
     "typecheck": "npm run typecheck --workspace backend && npm exec --workspace frontend tsc -- --noEmit",
     "lint": "npm run lint --workspace frontend"
   },
+  "engines": {
+    "node": "^20.0.0"
+  },
   "workspaces": [
     "frontend",
     "backend"
