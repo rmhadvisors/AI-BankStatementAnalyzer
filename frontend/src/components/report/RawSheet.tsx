@@ -12,27 +12,11 @@ import {
   emiTrackerSheet,
   tradeCreditsSheet,
   tradeDebitsSheet,
-  const [rawSheetsState, setRawSheetsState] = useState<Record<string, RawRow[]> | null>(null);
-  useEffect(() => {
-    let mounted = true;
-    import("@/data/rawSheets")
-      .then((m) => {
-        if (mounted) setRawSheetsState((m as any).rawSheets ?? null);
-      })
-      .catch(() => {
-        // ignore; sample data not critical
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const rows = useMemo(() => {
-    const live = resolveLiveRows(String(name));
-    if (live) return live;
-    if (rawSheetsState) return (rawSheetsState as Record<string, RawRow[]>)[name];
-    return undefined;
-  }, [name, rawSheetsState]);
+  highestTnsSheet,
+  internalGroupSheet,
+  circularSheet,
+  netTransactionsSheet,
+  salarySheet,
   staffEmolumentsSheet,
   spendAnalysisSheet,
   billPaymentsSheet,
@@ -145,18 +129,34 @@ export function RawSheet({
   subtitle,
   initialRows = 50,
 }: {
-  name: keyof typeof rawSheets | string;
+  name: string;
   title?: string;
   subtitle?: string;
   initialRows?: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  const [rawSheetsState, setRawSheetsState] = useState<Record<string, RawRow[]> | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    import("@/data/rawSheets")
+      .then((m) => {
+        if (mounted) setRawSheetsState((m as any).rawSheets ?? null);
+      })
+      .catch(() => {
+        // ignore; sample data not critical
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const rows = useMemo(() => {
     const live = resolveLiveRows(String(name));
     if (live) return live;
-    return (rawSheets as Record<string, RawRow[]>)[name];
-  }, [name]);
+    if (rawSheetsState) return (rawSheetsState as Record<string, RawRow[]>)[name];
+    return undefined;
+  }, [name, rawSheetsState]);
 
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
