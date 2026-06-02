@@ -48,7 +48,12 @@ function ExecPage() {
             const banks = applicant.banks ?? [];
             const bank1 = banks[0];
             const bank2 = banks[1];
-            const cols: Array<{ key: string; label: string; align?: "right"; mono?: boolean }> = [
+            const cols: Array<{
+              key: "particulars" | "consolidated" | "kotak" | "pnb";
+              label: string;
+              align?: "left" | "right" | "center";
+              mono?: boolean;
+            }> = [
               { key: "particulars", label: "Particulars" },
               { key: "consolidated", label: "Consolidated", align: "right", mono: true },
             ];
