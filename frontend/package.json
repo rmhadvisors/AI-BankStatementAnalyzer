@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "postinstall": "node ./scripts/fix-rollup-native.js",
+    "postinstall": "node ./scripts/fix-rollup-native.cjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
