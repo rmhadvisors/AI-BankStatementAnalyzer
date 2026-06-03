@@ -8,10 +8,18 @@ const port = Number(process.env.PORT || 3000);
 
 app.use(cors({
   origin: (origin, callback) => {
-    const allowedOrigins = [process.env.FRONTEND_ORIGIN, "http://localhost:5173", "http://localhost:5174"].filter(Boolean) as string[];
+    const rawOrigin = process.env.FRONTEND_ORIGIN;
+    const cleanedFrontendOrigin = rawOrigin ? rawOrigin.trim().replace(/\/$/, "") : "";
+    const allowedOrigins = [
+      cleanedFrontendOrigin,
+      "http://localhost:5173",
+      "http://localhost:5174"
+    ].filter(Boolean) as string[];
+
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked for origin: ${origin}. Allowed origins: ${allowedOrigins.join(", ")}`);
       callback(new Error("Not allowed by CORS"));
     }
   },
