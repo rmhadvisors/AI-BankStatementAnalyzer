@@ -1,6 +1,15 @@
 // @ts-nocheck
 const fs = require("fs");
 
+// Polyfill DOMMatrix for Node.js environments (required by pdfjs-dist v5+)
+if (typeof global !== "undefined" && !global.DOMMatrix) {
+  try {
+    global.DOMMatrix = require("dommatrix").DOMMatrix;
+  } catch (err) {
+    console.error("Failed to load DOMMatrix polyfill:", err);
+  }
+}
+
 let pdfjsPromise;
 
 function getPdfjs() {
