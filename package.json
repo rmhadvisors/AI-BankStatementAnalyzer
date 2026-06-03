@@ -14,7 +14,8 @@
   },
   "devDependencies": {
     "@rollup/rollup-linux-x64-gnu": "4.60.4",
-    "lightningcss-linux-x64-gnu": "1.32.0"
+    "lightningcss-linux-x64-gnu": "1.32.0",
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0"
   },
   "workspaces": [
     "frontend",
