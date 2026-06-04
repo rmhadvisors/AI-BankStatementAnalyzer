@@ -1,3 +1,4 @@
+import "./polyfills";
 import cors from "cors";
 import express from "express";
 import { analysisRouter } from "./routes/analysis.routes";
