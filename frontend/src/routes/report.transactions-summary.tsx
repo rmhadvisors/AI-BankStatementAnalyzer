@@ -37,10 +37,11 @@ export const Route = createFileRoute("/report/transactions-summary")({
 
 function TransactionSummaryPage() {
   const initialTxns = useMemo(() => {
-    const list: SummaryTxn[] = transactions.length
+    const list = transactions.length
       ? (transactions as SummaryTxn[])
       : [
-          ...tradeCredits.map((t) => ({
+          ...tradeCredits.map((t, idx) => ({
+            id: `trade-credit-${idx}`,
             dateText: t.date,
             party: t.party,
             narration: t.narration,
@@ -50,7 +51,8 @@ function TransactionSummaryPage() {
             direction: "Credit" as const,
             category: "Trade Credit",
           })),
-          ...tradeDebits.map((t) => ({
+          ...tradeDebits.map((t, idx) => ({
+            id: `trade-debit-${idx}`,
             dateText: t.date,
             party: t.party,
             narration: t.narration,
@@ -61,7 +63,6 @@ function TransactionSummaryPage() {
             category: "Trade Debit",
           })),
         ];
-
     return list.map((t, idx) => {
       const cleanParty = cleanGarbageFromText(t.party || "");
       const cleanNarration = cleanGarbageFromText(t.narration || "");
@@ -70,7 +71,7 @@ function TransactionSummaryPage() {
         party: cleanParty || "UNRECOGNIZED",
         narration: cleanNarration || "Transaction",
         id: t.id || `txn-${idx}`,
-      } as SummaryTxn & { id: string };
+      };
     });
   }, []);
 
@@ -108,7 +109,7 @@ function TransactionSummaryPage() {
   const enrichedTransactions = useMemo(() => {
     return initialTxns.map((t) => ({
       ...t,
-      customParty: overrides[(t as SummaryTxn & { id: string }).id],
+      customParty: overrides[t.id || ""],
     }));
   }, [initialTxns, overrides]);
 

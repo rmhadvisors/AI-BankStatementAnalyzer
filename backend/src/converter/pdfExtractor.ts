@@ -1,6 +1,4 @@
 // @ts-nocheck
-require("../polyfills");
-
 const fs = require("fs");
 
 let pdfjsPromise;

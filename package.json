@@ -9,14 +9,6 @@
     "typecheck": "npm run typecheck --workspace backend && npm exec --workspace frontend tsc -- --noEmit",
     "lint": "npm run lint --workspace frontend"
   },
-  "engines": {
-    "node": "^20.0.0"
-  },
-  "devDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "4.60.4",
-    "lightningcss-linux-x64-gnu": "1.32.0",
-    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0"
-  },
   "workspaces": [
     "frontend",
     "backend"

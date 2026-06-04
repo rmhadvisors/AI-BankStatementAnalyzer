@@ -54,15 +54,8 @@ export function saveLatestReport(id: string, report: unknown) {
 
   latestAnalysisId = id;
   latestReport = report;
-  try {
-    window.localStorage.setItem(ANALYSIS_ID_KEY, id);
-    window.localStorage.setItem(REPORT_KEY, JSON.stringify(report));
-  } catch (error) {
-    console.warn(
-      "Failed to persist latest report to localStorage (using in-memory only). This can happen with very large analysis results.",
-      error,
-    );
-  }
+  window.localStorage.setItem(ANALYSIS_ID_KEY, id);
+  window.localStorage.setItem(REPORT_KEY, JSON.stringify(report));
   notify();
 }
 

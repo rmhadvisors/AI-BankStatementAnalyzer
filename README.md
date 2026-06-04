@@ -79,6 +79,5 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 -   `npm run build`: Builds the application for production.
 -   `npm run preview`: Serves the production build locally.
 -   `npm run lint`: Lints the codebase using ESLint.
- -  `npm run format`: Formats the code using Prettier.
-
-<!-- Trigger redeploy: updated README to force new commit for Render -->
+--  `npm run format`: Formats the code using Prettier.
+"# AI-BankStatementAnalyzer" 

@@ -7,6 +7,8 @@ import { CreditsDebitsPeriodChart } from "@/components/report/PeriodCharts";
 import { execSummary, applicant, flags, formatINR } from "@/data/reportData";
 import { useScopedReport } from "@/hooks/useScopedReport";
 
+type ExecSummaryColumnKey = keyof (typeof execSummary)[number];
+
 export const Route = createFileRoute("/report/")({
   component: ExecPage,
 });
@@ -48,12 +50,7 @@ function ExecPage() {
             const banks = applicant.banks ?? [];
             const bank1 = banks[0];
             const bank2 = banks[1];
-            const cols: Array<{
-              key: "particulars" | "consolidated" | "kotak" | "pnb";
-              label: string;
-              align?: "left" | "right" | "center";
-              mono?: boolean;
-            }> = [
+            const cols: Array<{ key: ExecSummaryColumnKey; label: string; align?: "right"; mono?: boolean }> = [
               { key: "particulars", label: "Particulars" },
               { key: "consolidated", label: "Consolidated", align: "right", mono: true },
             ];

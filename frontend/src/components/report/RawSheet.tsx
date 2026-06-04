@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Panel } from "./primitives";
+import { rawSheets, type RawRow } from "@/data/rawSheets";
 import {
   execSheet,
   flagsSheet,
@@ -47,8 +48,6 @@ const LIVE_SHEET_MAP: Record<string, Array<Array<string | number | null>>> = {
   "Recurring Debit": recurringDebitSheet as unknown as Array<Array<string | number | null>>,
   "Recurring Credit": recurringCreditSheet as unknown as Array<Array<string | number | null>>,
 };
-
-type RawRow = (string | number | null)[];
 
 const MODULE_SLUG_MAP: Record<string, string> = {
   "Exec Summary": "executive-summary",
@@ -130,7 +129,7 @@ export function RawSheet({
   subtitle,
   initialRows = 50,
 }: {
-  name: string;
+  name: keyof typeof rawSheets | string;
   title?: string;
   subtitle?: string;
   initialRows?: number;
@@ -139,7 +138,8 @@ export function RawSheet({
 
   const rows = useMemo(() => {
     const live = resolveLiveRows(String(name));
-    return live ?? undefined;
+    if (live) return live;
+    return (rawSheets as Record<string, RawRow[]>)[name];
   }, [name]);
 
   const [expanded, setExpanded] = useState(false);

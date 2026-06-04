@@ -69,7 +69,6 @@ analysisRouter.post("/analysis", statementUpload, async (request, response) => {
       report,
     });
   } catch (error) {
-    console.error("Analysis endpoint error:", error);
     const err = error as { code?: string; message?: string };
     const record = createFailedAnalysisRecord(err.message || "Analysis failed.");
     const status = ["PASSWORD_REQUIRED", "INVALID_PASSWORD", "NO_TRANSACTIONS_FOUND"].includes(err.code || "") ? 400 : 500;
